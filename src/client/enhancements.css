@@ -45,3 +45,31 @@
 .scoped-graph { height:calc(100vh - 195px); min-height:460px }
 @media(max-width:700px) { .topology-domains{grid-template-columns:1fr}.topology-domains>button{grid-template-columns:42px minmax(0,1fr) auto 15px}.topology-domains>button>.status{display:none}.topology-items{grid-template-columns:1fr}.scoped-graph{height:62vh} }
 .title-actions{display:flex;align-items:center;gap:13px;color:#718c98;font-size:11px}.discover-button{padding:8px 11px;border:1px solid #397080;border-radius:4px;background:#102934;color:var(--teal);font-size:10px;cursor:pointer}.enrollment-panel{position:fixed;z-index:9;right:22px;top:82px;width:min(560px,calc(100vw - 30px));max-height:calc(100vh - 105px);overflow:auto;border:1px solid #315462;border-radius:7px;background:#09171ef7;box-shadow:0 20px 60px #0009}.enrollment-panel .banner{margin:12px}.enrollment-list{padding:8px}.enrollment-list>div{display:grid;grid-template-columns:75px minmax(0,1fr) 110px;align-items:center;gap:10px;padding:12px;border-bottom:1px solid var(--line);font-size:10px}.enrollment-list span strong,.enrollment-list span small{display:block}.enrollment-list span small{margin-top:3px;color:#66838f}.enrollment-list em{color:var(--teal);font-style:normal;text-align:right}.enrollment-list button{padding:6px;border:1px solid #397080;background:#102934;color:var(--teal);font-size:9px;cursor:pointer}
+
+/* Theme switcher and Sakura palette */
+.header-actions,.header-state{display:flex;align-items:center}.header-actions{gap:16px}.theme-switcher{display:flex;padding:3px;border:1px solid #29424e;border-radius:20px;background:#0d2029}.theme-switcher button{display:grid;place-items:center;width:27px;height:25px;padding:0;border:0;border-radius:50%;background:transparent;color:#78939e;cursor:pointer}.theme-switcher button:hover{color:var(--teal)}.theme-switcher button.active{background:#193541;color:var(--teal);box-shadow:0 1px 5px #0005}
+
+:root[data-theme="sakura"]{color:#4b2837;background:#fff8fb;color-scheme:light;--line:#ead2dc;--panel:#fffafd;--muted:#8b6877;--teal:#c74273;--red:#c43d5a;--yellow:#b57a18;--blue:#be5c85}
+:root[data-theme="sakura"] .app{background:radial-gradient(circle at 72% 7%,#ffe2ec,#fff8fb 48%,#f8eef3)}
+:root[data-theme="sakura"] header{background:#fffafced;box-shadow:0 1px 12px #8a496315}
+:root[data-theme="sakura"] .nav{background:#fdf5f9e8}
+:root[data-theme="sakura"] .mark{background:#fff0f5;border-radius:50%}
+:root[data-theme="sakura"] .brand small,:root[data-theme="sakura"] .header-state,:root[data-theme="sakura"] label,:root[data-theme="sakura"] .eyebrow,:root[data-theme="sakura"] dt{color:#916878}
+:root[data-theme="sakura"] .theme-switcher,:root[data-theme="sakura"] .refresh,:root[data-theme="sakura"] input{border-color:#dfbfcc;background:#fffafd;color:#593243}
+:root[data-theme="sakura"] .theme-switcher button{color:#9c7181}
+:root[data-theme="sakura"] .theme-switcher button.active{background:#f8d5e2;color:#a92f60;box-shadow:0 1px 5px #8a496326}
+:root[data-theme="sakura"] .nav nav button{color:#8c6776}
+:root[data-theme="sakura"] .nav nav button:hover,:root[data-theme="sakura"] .nav nav button.active{background:#f8dfe8;color:#542c3d}
+:root[data-theme="sakura"] .collector>span,:root[data-theme="sakura"] .collector small,:root[data-theme="sakura"] .title>span,:root[data-theme="sakura"] .status,:root[data-theme="sakura"] th,:root[data-theme="sakura"] td small,:root[data-theme="sakura"] .empty{color:#927080}
+:root[data-theme="sakura"] .stats article,:root[data-theme="sakura"] .panel,:root[data-theme="sakura"] .table-wrap,:root[data-theme="sakura"] .topology-domains>button,:root[data-theme="sakura"] .topology-items>button{background:#fffafdde;box-shadow:0 6px 24px #9f55700c}
+:root[data-theme="sakura"] .stats article>span,:root[data-theme="sakura"] .stats strong small,:root[data-theme="sakura"] .stats article>small{color:#927080}
+:root[data-theme="sakura"] td{border-color:#f0dfe6;color:#694354}:root[data-theme="sakura"] td strong{color:#4b2837}:root[data-theme="sakura"] tbody tr:hover{background:#fff0f5}
+:root[data-theme="sakura"] .meter{background:#f0d9e2}:root[data-theme="sakura"] .meter>b{color:#8c6776}
+:root[data-theme="sakura"] .issue-row,:root[data-theme="sakura"] .alerts-list button{border-color:#f0dfe6;color:#694354}:root[data-theme="sakura"] .issue-row:hover,:root[data-theme="sakura"] .alerts-list button:hover{background:#fff0f5}
+:root[data-theme="sakura"] .drawer,:root[data-theme="sakura"] .enrollment-panel{background:#fffafcf7;border-color:#dfbfcc;box-shadow:-20px 0 50px #6e344322}:root[data-theme="sakura"] .drawer h2,:root[data-theme="sakura"] .drawer dd{color:#4b2837}
+:root[data-theme="sakura"] .login{background:radial-gradient(circle,#ffe0ea,#fff8fb)}:root[data-theme="sakura"] .login form{background:#fffafd;border-color:#dfbfcc;box-shadow:0 18px 60px #8a49631c}:root[data-theme="sakura"] .login p{color:#8c6776}
+:root[data-theme="sakura"] .graph-controls,:root[data-theme="sakura"] .graph-hint{background:#fffafdde;border-color:#dfbfcc;box-shadow:0 8px 24px #8a49631c}:root[data-theme="sakura"] .graph-controls button{background:#fff0f5;border-color:#dfbfcc;color:#593243}:root[data-theme="sakura"] .graph-hint{color:#8c6776}
+:root[data-theme="sakura"] .pct-group,:root[data-theme="sakura"] .service-group{background:#fffafd;border-color:#ead2dc;box-shadow:0 8px 24px #9f55700c}:root[data-theme="sakura"] .pct-owner,:root[data-theme="sakura"] .service-owner{background:#fce9f0;border-color:#ead2dc;color:#4b2837}:root[data-theme="sakura"] .pct-owner:hover,:root[data-theme="sakura"] .service-owner:hover,:root[data-theme="sakura"] .endpoint-list button:hover{background:#f9dce7}:root[data-theme="sakura"] .endpoint-list button{color:#694354}
+:root[data-theme="sakura"] .domain-icon,:root[data-theme="sakura"] .endpoint-links a,:root[data-theme="sakura"] .discover-button,:root[data-theme="sakura"] .enrollment-list button{background:#fff0f5;border-color:#dcaebe}
+:root[data-theme="sakura"] .topology-domains>button,:root[data-theme="sakura"] .topology-items>button{color:#4b2837}:root[data-theme="sakura"] .topology-domains>button:hover,:root[data-theme="sakura"] .topology-items>button:hover{background:#fff0f5;border-color:#dcaebe}
+@media(max-width:720px){.header-actions{gap:7px}.theme-switcher button{width:25px}.refresh{margin-left:4px}}
