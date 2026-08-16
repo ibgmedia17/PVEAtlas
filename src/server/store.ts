@@ -62,6 +62,7 @@ export class Store {
 
   declaredGuestIds() { return (this.db.prepare("SELECT id FROM entities WHERE kind='guest'").all() as { id: string }[]).map(row => row.id); }
   guestTargets() { return this.db.prepare("SELECT id,label,metadata FROM entities WHERE kind='guest'").all().map((r: any) => ({ id: r.id, vmid: Number(r.id.slice(6)), label: r.label, ...JSON.parse(r.metadata) })) as { id: string; vmid: number; label: string; address?: string; application?: string }[]; }
+  upsertDiscoveredGuest(guest: { vmid: number; name: string; address?: string }) { const id = `guest:${guest.vmid}`, now = new Date().toISOString(), old = this.entity(id); this.db.prepare('INSERT OR REPLACE INTO entities VALUES(?,?,?,?,?,?,?)').run(id, 'guest', guest.name || `PCT ${guest.vmid}`, 'node:pve', old?.status ?? 'unknown', JSON.stringify({ ...(old?.metadata ?? {}), vmid: guest.vmid, address: guest.address, discoveredByAtlas: true }), now); this.db.prepare('INSERT OR REPLACE INTO relations VALUES(?,?,?,?)').run(`node-guest-${guest.vmid}`, 'node:pve', id, 'hosts'); return this.entity(id); }
   removeIssuesForUnknownEntities() { this.db.prepare('DELETE FROM issues WHERE entity_id NOT IN (SELECT id FROM entities)').run(); }
 
   replaceDockerObservation(vmid: number, containers: Record<string, unknown>[]) {
@@ -95,6 +96,18 @@ export class Store {
       if (raw.health !== undefined && raw.health !== null) this.observe(id, 'docker-container-health', raw.health === 'unhealthy', 'critical', `${name} health is ${String(raw.health)}`);
     }
     this.updateMetadata(`guest:${vmid}`, undefined, { dockerCollectorStatus: 'ok', dockerContainerCount: containers.length, dockerObservedAt: now });
+  }
+
+  applyProxyHosts() {
+    const proxyRows = this.db.prepare("SELECT metadata FROM entities WHERE kind='container'").all() as { metadata: string }[];
+    const mappings = proxyRows.flatMap(row => { const metadata = JSON.parse(row.metadata); return Array.isArray(metadata.proxyHosts) ? metadata.proxyHosts : []; }) as { domains?: string[]; forwardHost?: string; forwardPort?: number; certificateId?: number }[];
+    const endpoints = this.db.prepare("SELECT id,metadata FROM entities WHERE kind='endpoint'").all() as { id: string; metadata: string }[];
+    const update = this.db.prepare('UPDATE entities SET metadata=? WHERE id=?');
+    for (const endpoint of endpoints) {
+      const metadata = JSON.parse(endpoint.metadata), hostPort = Number(metadata.hostPort);
+      const publicUrls = mappings.filter(mapping => mapping.forwardHost === metadata.address && Number(mapping.forwardPort) === hostPort).flatMap(mapping => (mapping.domains ?? []).map(domain => `${mapping.certificateId ? 'https' : 'http'}://${domain}`));
+      update.run(JSON.stringify({ ...metadata, publicUrls: [...new Set(publicUrls)] }), endpoint.id);
+    }
   }
 
   observe(entityId: string, code: string, failed: boolean, severity: Issue['severity'], message: string, fingerprint = message) {

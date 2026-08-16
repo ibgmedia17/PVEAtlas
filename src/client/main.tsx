@@ -2,6 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client';
 import cytoscape from 'cytoscape';
 import './style.css';
+import './enhancements.css';
+import { KnowledgeGraph } from './KnowledgeGraph';
+import { EnrollmentPanel } from './EnrollmentPanel';
 
 type Entity = { id: string; kind: string; label: string; parent?: string; status?: string; metadata?: Record<string, unknown> };
 type Issue = { id: string; entityId: string; code: string; severity: string; state: string; message: string; failures: number; updatedAt: string };
@@ -11,23 +14,69 @@ type View = 'overview' | 'topology' | 'guests' | 'services' | 'storage' | 'alert
 async function api(path: string, init?: RequestInit) { const r = await fetch(path, init); if (!r.ok) throw new Error(String(r.status)); return r.status === 204 ? null : r.json(); }
 const value = (v: unknown) => v === null || v === undefined ? '—' : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v);
 const age = (stamp: unknown) => { if (!stamp) return 'never'; const seconds = Math.max(0, Math.floor((Date.now() - new Date(String(stamp)).getTime()) / 1000)); return seconds < 60 ? `${seconds}s ago` : seconds < 3600 ? `${Math.floor(seconds / 60)}m ago` : `${Math.floor(seconds / 3600)}h ago`; };
-const pct = (v: unknown) => typeof v === 'number' ? `${v.toFixed(1)}%` : '—';
+const numericPercent = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : null;
+const pct = (v: unknown) => { const n = numericPercent(v); return n === null ? '—' : `${n.toFixed(1)}%`; };
 
 function Status({ status = 'unknown' }: { status?: string }) { return <span className={`status ${status}`}><i />{status}</span>; }
-function Meter({ number }: { number: unknown }) { const n = typeof number === 'number' ? number : 0; return <span className="meter"><i style={{ width: `${Math.min(100, n)}%` }} /><b>{pct(number)}</b></span>; }
+function EndpointLinks({ entity }: { entity: Entity }) { const urls = Array.isArray(entity.metadata?.publicUrls) ? entity.metadata.publicUrls.map(String) : []; return urls.length ? <span className="endpoint-links">{urls.map(url => <a key={url} href={url} target="_blank" rel="noreferrer" onClick={event => event.stopPropagation()}>{new URL(url).hostname}<b>↗</b></a>)}</span> : null; }
+function Meter({ number }: { number: unknown }) { const n = numericPercent(number); return <span className={`meter ${n === null ? 'unknown' : ''}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={n ?? undefined} aria-label={n === null ? 'Usage unavailable' : `${n.toFixed(1)} percent used`}><i style={{ width: `${n ?? 0}%` }} /><b>{pct(number)}</b></span>; }
 
-function Graph({ model, query, onSelect }: { model: Topology; query: string; onSelect: (e: Entity) => void }) {
+function Graph({ model, rootId, onSelect, onDrill }: { model: Topology; rootId: string; onSelect: (e: Entity) => void; onDrill: (e: Entity) => void }) {
   const ref = useRef<HTMLDivElement>(null);
+  const cyRef = useRef<cytoscape.Core | null>(null);
   useEffect(() => {
     if (!ref.current) return;
-    const matches = (e: Entity) => !query || `${e.label} ${e.id}`.toLowerCase().includes(query.toLowerCase());
-    const visible = model.entities.filter(e => matches(e) || e.kind === 'node' || e.kind === 'guest');
-    const ids = new Set(visible.map(e => e.id));
-    const cy = cytoscape({ container: ref.current, elements: [...visible.map(e => ({ data: e })), ...model.relations.filter(r => ids.has(r.source) && ids.has(r.target)).map(r => ({ data: r }))], layout: { name: 'cose', animate: false, nodeRepulsion: () => 9000 }, style: [{ selector: 'node', style: { label: 'data(label)', 'background-color': '#38bdf8', color: '#dce9ef', 'font-size': 10, 'text-valign': 'bottom', 'text-margin-y': 7 } }, { selector: 'node[kind="guest"]', style: { shape: 'round-rectangle', width: 34, height: 22, 'background-color': '#2dd4bf' } }, { selector: 'node[kind="container"]', style: { width: 19, height: 19, 'background-color': '#a78bfa' } }, { selector: 'node[status="critical"]', style: { 'background-color': '#fb7185' } }, { selector: 'node[status="warning"]', style: { 'background-color': '#fbbf24' } }, { selector: 'edge', style: { width: 1, 'line-color': '#365363', 'target-arrow-color': '#365363', 'target-arrow-shape': 'triangle', 'curve-style': 'bezier', opacity: .7 } }] });
-    cy.on('tap', 'node', event => onSelect(event.target.data() as Entity));
-    return () => cy.destroy();
-  }, [model, query, onSelect]);
-  return <div className="graph" ref={ref} />;
+    // Cytoscape accepts selector roots and numeric canvas styles that its public typings omit.
+    // @ts-expect-error Cytoscape runtime API is broader than its layout/style declarations.
+    const cy = cytoscape({ container: ref.current, elements: [...model.entities.map(e => ({ data: { ...e, focused: e.id === rootId ? 'yes' : 'no' } })), ...model.relations.map(r => ({ data: r }))], minZoom: .25, maxZoom: 2.5, wheelSensitivity: .12, boxSelectionEnabled: false, userPanningEnabled: true, userZoomingEnabled: true, autoungrabify: true, layout: { name: 'breadthfirst', directed: true, roots: `#${CSS.escape(rootId)}`, spacingFactor: 1.35, circle: false, grid: true, fit: true, padding: 70, animate: false }, style: [{ selector: 'node', style: { label: 'data(label)', width: 34, height: 34, shape: 'round-rectangle', 'background-color': '#38bdf8', 'border-width': 2, 'border-color': '#173946', color: '#dce9ef', 'font-size': 11, 'font-weight': 600, 'text-valign': 'bottom', 'text-margin-y': 9, 'text-background-color': '#071219', 'text-background-opacity': .86, 'text-background-padding': 3, 'overlay-opacity': 0 } }, { selector: 'node[focused="yes"]', style: { width: 52, height: 42, 'border-width': 3, 'border-color': '#e3f1f5', 'font-size': 12 } }, { selector: 'node[kind="guest"]', style: { 'background-color': '#2dd4bf' } }, { selector: 'node[kind="container"]', style: { 'background-color': '#a78bfa' } }, { selector: 'node[kind="storage"]', style: { 'background-color': '#38bdf8', shape: 'barrel' } }, { selector: 'node[kind="network"]', style: { 'background-color': '#60a5fa', shape: 'diamond' } }, { selector: 'node[status="critical"]', style: { 'background-color': '#fb7185' } }, { selector: 'node[status="warning"]', style: { 'background-color': '#fbbf24' } }, { selector: 'edge', style: { width: 1.5, label: 'data(kind)', color: '#66838f', 'font-size': 8, 'text-background-color': '#071219', 'text-background-opacity': .8, 'text-background-padding': 2, 'line-color': '#365363', 'target-arrow-color': '#365363', 'target-arrow-shape': 'triangle', 'curve-style': 'taxi', 'taxi-direction': 'downward', opacity: .8 } }] });
+    cyRef.current = cy;
+    const fit = () => { cy.resize(); cy.fit(cy.elements(), 70); };
+    cy.ready(() => requestAnimationFrame(fit));
+    const observer = new ResizeObserver(fit); observer.observe(ref.current);
+    cy.on('tap', 'node', event => onDrill(event.target.data() as Entity));
+    cy.on('cxttap', 'node', event => onSelect(event.target.data() as Entity));
+    return () => { observer.disconnect(); cyRef.current = null; cy.destroy(); };
+  }, [model, rootId, onSelect, onDrill]);
+  const zoomBy = (factor: number) => { const cy = cyRef.current, el = ref.current; if (!cy || !el) return; cy.stop(); cy.zoom({ level: Math.max(cy.minZoom(), Math.min(cy.maxZoom(), cy.zoom() * factor)), renderedPosition: { x: el.clientWidth / 2, y: el.clientHeight / 2 } }); };
+  const fit = () => { const cy = cyRef.current; if (!cy) return; cy.stop(); cy.resize(); cy.fit(cy.elements(), 70); };
+  return <div className="graph-shell"><div className="graph" ref={ref} /><div className="graph-controls" aria-label="Topology controls"><button type="button" title="Zoom in" onClick={e => { e.stopPropagation(); zoomBy(1.3); }}>+</button><button type="button" title="Zoom out" onClick={e => { e.stopPropagation(); zoomBy(1 / 1.3); }}>−</button><button type="button" className="fit" onClick={e => { e.stopPropagation(); fit(); }}>Fit</button></div><div className="graph-hint">Click a node to drill in · drag canvas to pan · scroll to zoom · right-click for details</div></div>;
+}
+
+type TopologyDomain = 'compute' | 'applications' | 'storage' | 'network' | 'protection';
+const topologyDomains: { id: TopologyDomain; label: string; description: string; kinds: string[]; icon: string }[] = [
+  { id: 'compute', label: 'Compute', description: 'PVE nodes and guests', kinds: ['node', 'guest'], icon: '▣' },
+  { id: 'applications', label: 'Applications', description: 'Projects, containers, and endpoints', kinds: ['project', 'container', 'endpoint'], icon: '◆' },
+  { id: 'storage', label: 'Storage', description: 'Pools, mounts, and volumes', kinds: ['storage', 'volume'], icon: '▤' },
+  { id: 'network', label: 'Networks', description: 'Bridges and attached guests', kinds: ['network'], icon: '⌯' },
+  { id: 'protection', label: 'Protection', description: 'Backup jobs and protected guests', kinds: ['backup-job'], icon: '◈' }
+];
+
+function TopologyExplorer({ model, query, onSelect }: { model: Topology; query: string; onSelect: (e: Entity) => void }) {
+  const [domain, setDomain] = useState<TopologyDomain | null>(null);
+  const [trail, setTrail] = useState<string[]>([]);
+  const focusId = trail.at(-1) ?? null;
+  const selectedDomain = topologyDomains.find(item => item.id === domain);
+  const statusFor = (items: Entity[]) => items.some(e => e.status === 'critical') ? 'critical' : items.some(e => e.status === 'warning') ? 'warning' : items.length && items.every(e => e.status === 'ok') ? 'ok' : 'unknown';
+  const descendantsOf = (id: string) => { const ids = new Set([id]); let changed = true; while (changed) { changed = false; for (const e of model.entities) if (e.parent && ids.has(e.parent) && !ids.has(e.id)) { ids.add(e.id); changed = true; } } return ids; };
+  const domainEntities = selectedDomain ? model.entities.filter(e => selectedDomain.kinds.includes(e.kind)) : [];
+  const owners = domain === 'applications'
+    ? model.entities.filter(e => e.kind === 'guest' && model.entities.some(child => child.parent === e.id && (child.kind === 'project' || child.kind === 'container')))
+    : domainEntities.filter(e => e.kind !== 'volume');
+  const shownOwners = owners.filter(e => !query || `${e.label} ${e.id} ${JSON.stringify(e.metadata)}`.toLowerCase().includes(query.toLowerCase()));
+  if (!domain) return <div className="topology-domains">{topologyDomains.map(item => { const items = model.entities.filter(e => item.kinds.includes(e.kind)); return <button key={item.id} onClick={() => setDomain(item.id)}><span className="domain-icon">{item.icon}</span><span><strong>{item.label}</strong><small>{item.description}</small></span><Status status={statusFor(items)} /><b>{items.length}<small>entities</small></b><i>→</i></button>; })}</div>;
+  if (!focusId) return <><div className="topology-crumbs"><button onClick={() => setDomain(null)}>Topology</button><span>/</span><strong>{selectedDomain?.label}</strong></div><div className="topology-items">{shownOwners.map(owner => { const children = descendantsOf(owner.id); const relatedCount = domain === 'applications' ? [...children].length - 1 : model.relations.filter(r => r.source === owner.id || r.target === owner.id).length; return <button key={owner.id} onClick={() => setTrail([owner.id])}><span><strong>{owner.label}</strong><small>{owner.kind} · {relatedCount} related</small></span><Status status={owner.status} /><i>→</i></button>; })}{shownOwners.length === 0 && <div className="empty">No matching topology groups</div>}</div></>;
+  const focus = model.entities.find(e => e.id === focusId);
+  const ids = new Set([focusId]);
+  for (const e of model.entities) if (e.parent === focusId) ids.add(e.id);
+  for (const relation of model.relations) { if (relation.source === focusId) ids.add(relation.target); if (relation.target === focusId) ids.add(relation.source); }
+  const scoped: Topology = { ...model, entities: model.entities.filter(e => ids.has(e.id)), relations: model.relations.filter(r => ids.has(r.source) && ids.has(r.target)) };
+  return <><div className="topology-crumbs"><button onClick={() => { setDomain(null); setTrail([]); }}>Topology</button><span>/</span><button onClick={() => setTrail([])}>{selectedDomain?.label}</button><span>/</span><strong>{focus?.label}</strong><small>Explorable knowledge graph</small></div><section className="panel graph-panel scoped-graph"><KnowledgeGraph model={model} rootId={focusId} onSelect={onSelect} /></section></>;
+}
+
+function ServicesByContainer({ containers, endpoints, guests, query, onSelect }: { containers: Entity[]; endpoints: Entity[]; guests: Entity[]; query: string; onSelect: (e: Entity) => void }) {
+  const q = query.toLowerCase();
+  const pctGroups = guests.map(guest => { const ownedContainers = containers.filter(container => container.parent === guest.id); const ownedEndpoints = endpoints.filter(endpoint => ownedContainers.some(container => container.id === endpoint.parent)); return { guest, containers: ownedContainers.map(container => ({ container, endpoints: ownedEndpoints.filter(endpoint => endpoint.parent === container.id) })) }; }).filter(group => group.containers.length && (!q || `${group.guest.label} ${group.guest.id} ${JSON.stringify(group.guest.metadata)} ${group.containers.map(({ container, endpoints: owned }) => `${container.label} ${container.id} ${JSON.stringify(container.metadata)} ${owned.map(e => `${e.label} ${JSON.stringify(e.metadata)}`).join(' ')}`).join(' ')}`.toLowerCase().includes(q)));
+  return <div className="pct-groups">{pctGroups.map(({ guest, containers: services }) => { const endpointCount = services.reduce((sum, service) => sum + service.endpoints.length, 0); return <section className="pct-group" key={guest.id}><button className="pct-owner" onClick={() => onSelect(guest)}><span className="pct-number">PCT {value(guest.metadata?.vmid ?? guest.id.replace('guest:', ''))}</span><span><strong>{guest.label}</strong><small>{services.length} service{services.length === 1 ? '' : 's'} · {endpointCount} endpoint{endpointCount === 1 ? '' : 's'}</small></span><Status status={guest.status} /></button><div className="service-groups">{services.map(({ container, endpoints: owned }) => <section className="service-group" key={container.id}><button className="service-owner" onClick={() => onSelect(container)}><span><strong>{container.label}</strong><small>{value(container.metadata?.image ?? container.metadata?.service ?? container.id)}</small></span><Status status={container.status} /><b>{owned.length} endpoint{owned.length === 1 ? '' : 's'}</b></button><div className="endpoint-list">{owned.length ? owned.map(endpoint => <button key={endpoint.id} onClick={() => onSelect(endpoint)}><span className="endpoint-icon">↗</span><span><strong>{endpoint.label}</strong><small>{value(endpoint.metadata?.address)}:{value(endpoint.metadata?.hostPort)} → {value(endpoint.metadata?.containerPort)}</small><EndpointLinks entity={endpoint} /></span><Status status={endpoint.status} /></button>) : <span className="no-endpoints">No published endpoints</span>}</div></section>)}</div></section>; })}{pctGroups.length === 0 && <div className="empty">No matching PCTs, services, or endpoints</div>}</div>;
 }
 
 function EntityTable({ entities, onSelect }: { entities: Entity[]; onSelect: (e: Entity) => void }) {
@@ -50,9 +99,9 @@ function App() {
     <aside className="nav"><label>SEARCH<input placeholder="Guest, container, image…" value={query} onChange={e => setQuery(e.target.value)} /></label><nav>{(['overview', 'topology', 'guests', 'services', 'storage', 'alerts'] as View[]).map(v => <button key={v} className={view === v ? 'active' : ''} onClick={() => setView(v)}><span>{v === 'overview' ? '◫' : v === 'topology' ? '⌘' : v === 'guests' ? '▣' : v === 'services' ? '◆' : v === 'storage' ? '▤' : '!'}</span>{v}<b>{v === 'guests' ? stats.guests : v === 'services' ? stats.containers : v === 'alerts' ? activeIssues.length : ''}</b></button>)}</nav><div className="collector"><span>COLLECTORS</span><p><Status status={node?.status} /> Proxmox API</p><p><Status status={stats.containers ? 'ok' : 'unknown'} /> Docker SSH</p><small>PVE: {age(node?.metadata?.lastObservedAt)}</small></div></aside>
     <main className="content">{error && <div className="banner">{error}</div>}
       {view === 'overview' && <><div className="title"><div><span className="eyebrow">INFRASTRUCTURE</span><h1>Operations overview</h1></div><Status status={stats.issues ? 'critical' : 'ok'} /></div><section className="stats"><article><span>GUESTS ONLINE</span><strong>{stats.running}<small> / {stats.guests}</small></strong></article><article><span>CONTAINERS</span><strong>{stats.containers}</strong><small>{stats.unhealthy} need attention</small></article><article><span>OPEN ISSUES</span><strong>{stats.issues}</strong><small>{activeIssues.length - stats.issues} pending</small></article><article><span>PVE CPU</span><strong>{pct(node?.metadata?.cpuPercent)}</strong><Meter number={node?.metadata?.cpuPercent} /></article></section><div className="overview-grid"><section className="panel"><div className="panel-head"><h2>Guest health</h2><button onClick={() => setView('guests')}>View all</button></div><EntityTable entities={guests.slice(0, 8)} onSelect={setSelected} /></section><section className="panel issues-panel"><div className="panel-head"><h2>Active issues</h2><button onClick={() => setView('alerts')}>History</button></div>{activeIssues.length ? activeIssues.slice(0, 8).map(i => <button className="issue-row" key={i.id} onClick={() => setSelected(entities.find(e => e.id === i.entityId) ?? null)}><Status status={i.severity} /><span>{i.message}<small>{i.entityId} · {age(i.updatedAt)}</small></span></button>) : <div className="empty healthy">✓ All observed systems nominal</div>}</section></div></>}
-      {view === 'topology' && <><div className="title"><div><span className="eyebrow">RELATIONSHIPS</span><h1>Live topology</h1></div><span>{entities.length} entities · {model?.relations.length ?? 0} links</span></div><section className="panel graph-panel">{model && <Graph model={model} query={query} onSelect={setSelected} />}</section></>}
+      {view === 'topology' && <><div className="title"><div><span className="eyebrow">RELATIONSHIPS</span><h1>Live topology</h1></div><span>Drill down by domain</span></div>{model && <TopologyExplorer model={model} query={query} onSelect={setSelected} />}</>}
       {view === 'guests' && <><div className="title"><div><span className="eyebrow">PROXMOX</span><h1>Guests</h1></div><span>{guests.length} shown</span></div><EntityTable entities={guests} onSelect={setSelected} /></>}
-      {view === 'services' && <><div className="title"><div><span className="eyebrow">DOCKER</span><h1>Services & endpoints</h1></div><span>{containers.length} containers · {endpoints.length} endpoints</span></div><EntityTable entities={containers} onSelect={setSelected} /></>}
+      {view === 'services' && <><div className="title"><div><span className="eyebrow">DOCKER</span><h1>Services & endpoints</h1></div><div className="title-actions"><span>{containers.length} containers · {endpoints.length} endpoints</span><EnrollmentPanel onChanged={() => void load()} /></div></div><ServicesByContainer containers={entities.filter(e => e.kind === 'container')} endpoints={entities.filter(e => e.kind === 'endpoint')} guests={entities.filter(e => e.kind === 'guest')} query={query} onSelect={setSelected} /></>}
       {view === 'storage' && <><div className="title"><div><span className="eyebrow">CAPACITY</span><h1>Storage</h1></div></div><EntityTable entities={storages} onSelect={setSelected} /></>}
       {view === 'alerts' && <><div className="title"><div><span className="eyebrow">EVENTS</span><h1>Alerts</h1></div><span>{stats.issues} open</span></div><section className="panel alerts-list">{issues.map(i => <button key={i.id} onClick={() => setSelected(entities.find(e => e.id === i.entityId) ?? null)}><Status status={i.state === 'resolved' ? 'ok' : i.severity} /><span><strong>{i.message}</strong><small>{i.code} · {i.entityId}</small></span><time>{i.state}<small>{age(i.updatedAt)}</small></time></button>)}</section></>}
     </main>

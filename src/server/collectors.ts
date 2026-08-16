@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import type { Store } from './store.js';
 
 const exec = promisify(execFile);
-export const ALLOWED_CONTAINER_FIELDS = ['id', 'name', 'image', 'state', 'health', 'exitCode', 'restartPolicy', 'project', 'service', 'ports', 'networks', 'mounts', 'devices'] as const;
+export const ALLOWED_CONTAINER_FIELDS = ['id', 'name', 'image', 'state', 'health', 'exitCode', 'restartPolicy', 'project', 'service', 'ports', 'networks', 'mounts', 'devices', 'proxyHosts'] as const;
 
 export function sanitizeContainers(input: unknown) {
   if (!Array.isArray(input)) throw new Error('collector payload must be an array');
@@ -26,6 +26,7 @@ export async function notifyNtfy(url: string, topic: string, bearer: string | un
 }
 
 type PveResource = { type: string; id?: string; vmid?: number; node?: string; name?: string; status?: string; cpu?: number; maxcpu?: number; mem?: number; maxmem?: number; disk?: number; maxdisk?: number; uptime?: number; storage?: string; plugintype?: string; content?: string; shared?: number };
+type PveZfsPool = { name?: string; pool?: string; health?: string; size?: number; alloc?: number; free?: number; frag?: number };
 function pveRequest<T>(base: string, path: string, tokenId: string, tokenSecret: string, caPath?: string) {
   return new Promise<T>((resolve, reject) => {
     const url = new URL(path, base.endsWith('/') ? base : `${base}/`);
@@ -58,8 +59,25 @@ export async function collectPve(store: Store, env = process.env) {
       if (declared) store.observe(id, 'pve-guest-stopped', !running, 'critical', running ? 'Guest is running' : `Guest is ${r.status ?? 'unknown'}`);
     } else if (r.type === 'storage' && r.storage) {
       const id = `storage:${r.storage}`; seen.add(id); const available = r.status === 'available';
-      const declared = store.updateObserved(id, available ? 'ok' : 'critical', { observedStatus: r.status, storageType: r.plugintype, content: r.content, shared: Boolean(r.shared), diskPercent: percent(r.disk, r.maxdisk) });
+      const knownFault = Boolean(store.entity(id)?.metadata?.knownFailedDrive);
+      const declared = store.updateObserved(id, available ? (knownFault ? 'warning' : 'ok') : 'critical', { observedStatus: r.status, storageType: r.plugintype, content: r.content, shared: Boolean(r.shared), diskPercent: percent(r.disk, r.maxdisk) });
       if (declared) store.observe(id, 'pve-storage-unavailable', !available, 'critical', available ? 'Storage is available' : `Storage is ${r.status ?? 'unknown'}`);
+    }
+  }
+  for (const nodeName of new Set(resources.filter(r => r.type === 'node' && r.node).map(r => r.node!))) {
+    try {
+      const pools = await pveRequest<PveZfsPool[]>(base, `api2/json/nodes/${encodeURIComponent(nodeName)}/disks/zfs`, tokenId, tokenSecret, env.PVE_CA_CERT);
+      for (const pool of pools) {
+        const name = pool.name ?? pool.pool;
+        if (!name) continue;
+        const id = `storage:${name}`, health = String(pool.health ?? 'unknown').toUpperCase(), healthy = health === 'ONLINE';
+        const knownFailedDrive = store.entity(id)?.metadata?.knownFailedDrive;
+        if (store.updateObserved(id, healthy ? 'ok' : 'critical', { poolHealth: health, poolSize: pool.size, poolAllocated: pool.alloc, poolFree: pool.free, poolFragmentation: pool.frag, failedDrive: healthy ? null : knownFailedDrive ?? 'See zpool status' })) {
+          store.observe(id, 'zfs-pool-degraded', !healthy, 'critical', healthy ? `${name} is ONLINE` : `${name} is ${health}${knownFailedDrive ? `; failed drive ${knownFailedDrive}` : ''}`);
+        }
+      }
+    } catch (error) {
+      console.error(`ZFS health collection failed for ${nodeName}`, error);
     }
   }
   for (const id of store.declaredGuestIds()) { const missing = !seen.has(id); store.observe(id, 'pve-guest-missing', missing, 'critical', missing ? 'Guest is absent from the PVE API' : 'Guest is present in PVE'); }
@@ -85,6 +103,7 @@ export async function collectAllDocker(store: Store, env = process.env) {
       store.observe(target.id, 'docker-collector-failed', true, 'warning', `Docker collection failed for ${target.label}: ${message}`, message);
     }
   });
+  store.applyProxyHosts();
   return { targets: targets.length, successful: results.filter(r => r.status === 'fulfilled').length };
 }
 
