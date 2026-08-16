@@ -6,7 +6,26 @@
       "label": "pve",
       "status": "unknown",
       "metadata": { "platform": "Proxmox VE" }
+    },
+    {
+      "id": "storage:GusGus",
+      "kind": "storage",
+      "label": "GusGus",
+      "parent": "node:pve",
+      "status": "critical",
+      "metadata": { "storageClass": "ZFS RAIDZ2", "knownFailedDrive": "Samsung SSD 870 EVO 4TB · WWN 5002538f31a1b636 · /dev/sda1", "faultDiscoveredAt": "2026-08-07" }
+    },
+    {
+      "id": "storage:TrueNAS-PVE",
+      "kind": "storage",
+      "label": "TrueNAS-PVE",
+      "parent": "node:pve",
+      "status": "unknown",
+      "metadata": { "storageClass": "NFSv4.2", "purpose": "Backups and application exports" }
     }
   ],
-  "relations": []
+  "relations": [
+    { "id": "node-storage-GusGus", "source": "node:pve", "target": "storage:GusGus", "kind": "hosts" },
+    { "id": "node-storage-TrueNAS-PVE", "source": "node:pve", "target": "storage:TrueNAS-PVE", "kind": "mounts" }
+  ]
 }
