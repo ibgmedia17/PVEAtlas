@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dist-server/
+*.tsbuildinfo
+*.sqlite*
+.env
+secrets/*
+!secrets/.gitkeep

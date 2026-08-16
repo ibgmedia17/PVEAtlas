@@ -1,0 +1,31 @@
+services:
+  atlas:
+    build: .
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid,nodev
+    ports:
+      - "${ATLAS_PORT:-8080}:8080"
+    volumes:
+      - atlas-data:/data
+      - ./config/declared-topology.json:/config/declared-topology.json:ro
+      - ${DOCKER_COLLECTOR_KEY_PATH:-./secrets/id_ed25519}:/run/secrets/collector_key:ro
+      - ${DOCKER_KNOWN_HOSTS_PATH:-./secrets/known_hosts}:/run/secrets/known_hosts:ro
+    env_file: .env
+    environment:
+      ATLAS_DECLARATION: /config/declared-topology.json
+      DOCKER_COLLECTOR_KEY: /run/secrets/collector_key
+      DOCKER_COLLECTOR_KNOWN_HOSTS: /run/secrets/known_hosts
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+
+volumes:
+  atlas-data:

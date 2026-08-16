@@ -1,0 +1,12 @@
+{
+  "entities": [
+    {
+      "id": "node:pve",
+      "kind": "node",
+      "label": "pve",
+      "status": "unknown",
+      "metadata": { "platform": "Proxmox VE" }
+    }
+  ],
+  "relations": []
+}
